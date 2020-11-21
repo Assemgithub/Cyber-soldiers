@@ -1,0 +1,240 @@
+import psycopg2
+from random import randint
+
+# connection to the existing database (use your own credentials)
+def db_connect():
+    return psycopg2.connect(user='postgres', \
+                            password='80858573', \
+                            host='127.0.0.1', \
+                            database='FOTBAL')
+
+
+# close the db connection
+def db_close(connection):
+    connection.close()
+
+
+# function to make insert queries
+def make_insert_query(cursor, query, connection):
+    cursor.execute(query)
+    connection.commit()
+
+
+# function to make select queries
+def make_select_query(cursor, query):
+    cursor.execute(query)
+    return cursor
+
+
+# display menu options for users
+def menu_options(is_authenticated, current_user, cursor):
+    if not is_authenticated:
+        print(f"Welcome {current_user}")
+        print("1. Register", "2. Login", "3. Exit", sep='\n')
+    else:
+        bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+        print(f"Welcome {current_user}, your current bank account: {bank}")
+        print("1. See games", "2. Make a deposit", "3. Withdraw money " , "4. admin", "5. Exit", sep='\n')
+
+
+# make user registration
+def user_registration(cursor, connection):
+    form = ['Login', 'First Name', 'Last Name', 'Password', 'Repeat password']  # list of forms
+    user_form = dict.fromkeys(form)  # create dictionary from form items
+    unique_login = False  # checking username for uniqueness
+    for i in form:  # running through each option in the form and fill it
+        if i is 'Login':  # checking the login
+            while not unique_login:  # loop until user enter a unique login
+                user_form[i] = input("Enter your " + i + ": \n")
+                for j in make_select_query(cursor, "select user_login from users").fetchall():
+                    if user_form.get('Login') in j:
+                        print("This username is already exists, please choose another!")
+                        break
+                else:  # if everything is ok then we proceed to the next items of form
+                    unique_login = True
+
+        else:
+            user_form[i] = input("Enter your " + i + ": \n")
+    # taking total number of users to create a user id for a new user
+    user_id = int(make_select_query(cursor, "select count(*) from users").fetchall()[0][0]) + 1
+    # creating the query itself
+    query = f"insert into users values(\
+                    {user_id},\
+                    '{user_form['Login']}',\
+                    '{user_form['First Name']}',\
+                    '{user_form['Last Name']}', \
+                    '{user_form['Password']}'\
+                    )"
+    # calling function for insertion
+    make_insert_query(cursor, query, connection)
+
+    account_id = int(make_select_query(cursor, "select count(*) from accounts").fetchall()[0][0]) + 1
+    user_id = make_select_query(cursor, f"select user_id from users where user_login='{user_form['Login']}'").fetchone()[0]
+    query = f"insert into accounts values({account_id},0,0,0,{user_id})"
+    make_insert_query(cursor, query, connection)
+    print("Account was succefully created")
+
+
+# function to get signed into the system
+def login(cursor):
+    user_login = input("Input your login: ")
+    password = input("Your password: ")
+    global current_user
+    global is_authenticated
+    global user_id
+    if password == \
+            make_select_query(cursor, f"select user_password from users where user_login='{user_login}'").fetchone()[0]:
+        is_authenticated = True
+        current_user = user_login
+        user_id = make_select_query(cursor, f"select user_id from users where user_login='{user_login}'").fetchone()[0]
+
+    else:
+        print("Your login or password is wrong!")
+        login(cursor)
+
+def make_deposit(cursor, connection):
+    deposite = input("Enter the Deposit amount: ")
+    bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+    int(bank)
+    bank = bank + int(deposite)
+    query = f"UPDATE accounts SET bank = {bank}
+WHERE user_id = '{user_id}'"
+    make_insert_query(cursor, query, connection)
+    print("Your bank was updated succesfully")
+
+def withdraw(cursor, connection):
+    withdraw = input("Enter the withdraw amount: ")
+    bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+    int(bank)
+    bank = bank - int(withdraw)
+    query = f"UPDATE accounts SET bank = {bank} WHERE user_id = '{user_id}'"
+    make_insert_query(cursor, query, connection)
+    print("Your bank was updated succesfully")
+
+
+def see_games(cursor, connection):
+    x = int(make_select_query(cursor, "select count(*) from games").fetchall()[0][0])
+    b = []
+    for i in range(x):
+        b.append(make_select_query(cursor, f"select game_id from games").fetchall()[0][0])
+    for i in range(x):
+        team1 = make_select_query(cursor, f"select team1 from games where game_id = {i+1}").fetchall()[0][0]
+        team2 = make_select_query(cursor, f"select team2 from games where game_id = {i+1}").fetchall()[0][0]
+        game_date = make_select_query(cursor, f"select game_date from games where game_id = {i+1}").fetchall()[0][0]
+        time = make_select_query(cursor, f"select time from games where game_id = {i+1}").fetchall()[0][0]
+        stadium = make_select_query(cursor, f"select stadium from games where game_id = {i+1}").fetchall()[0][0]
+        print(f"{i+1}. {team1} vs {team2} {game_date} at {time} in {stadium}")
+    print("Choose the option: 1 - to make a bet ")
+    print("Choose the option: 2 - to exit")
+    choice = input("Choice: ")
+    if choice == '1':
+        game_id_choise = int(input("Choose the game: "))
+        game_team_choise = input("Choose 'team1' for first team and 'team2' for the second team: ")
+        bet = int(input("How much money do you want to bet: "))
+        if randint(1,2) == 1:
+            if game_team_choise == 'team1':
+                print(make_select_query(cursor, f"select team1 from games where game_id = {game_id_choise}").fetchall()[0][0] + " won, congritulations!!!")
+                bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+                int(bank)
+                bank = bank + int(bet)
+                query = f"UPDATE accounts SET bank = {bank} WHERE user_id = '{user_id}'"
+                make_insert_query(cursor, query, connection)
+            else:
+                print(make_select_query(cursor, f"select team2 from games where game_id = {game_id_choise}").fetchall()[0][0] + " lost, better luck next time")
+                bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+                int(bank)
+                bank = bank - int(bet)
+                query = f"UPDATE accounts SET bank = {bank} WHERE user_id = '{user_id}'"
+                make_insert_query(cursor, query, connection)
+        else:
+            if game_team_choise == 'team1':
+                print(make_select_query(cursor, f"select team1 from games where game_id = {game_id_choise}").fetchall()[0][0] + " lost, better luck next time!!!")
+                bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+                int(bank)
+                bank = bank - int(bet)
+                query = f"UPDATE accounts SET bank = {bank} WHERE user_id = '{user_id}'"
+                make_insert_query(cursor, query, connection)
+            else:
+                print(make_select_query(cursor, f"select team2 from games where game_id = {game_id_choise}").fetchall()[0][0] + " won, congritulations")
+                bank = make_select_query(cursor, f"select bank from accounts where user_id='{user_id}'").fetchone()[0]
+                int(bank)   
+                bank = bank + int(bet)
+                query = f"UPDATE accounts SET bank = {bank} WHERE user_id = '{user_id}'"
+                make_insert_query(cursor, query, connection)        
+        print("All transactions was saved.")
+
+def admin(cursor, connection):
+    password = input("input password ")
+    if password == '
+0000':
+        x = int(make_select_query(cursor, "select count(*) from games").fetchall()[0][0])
+        for i in range(x):
+            team1 = make_select_query(cursor, f"select team1 from games where game_id = {i+1}").fetchall()[0][0]
+            team2 = make_select_query(cursor, f"select team2 from games where game_id = {i+1}").fetchall()[0][0]
+            game_date = make_select_query(cursor, f"select game_date from games where game_id = {i+1}").fetchall()[0][0]
+            time = make_select_query(cursor, f"select time from games where game_id = {i+1}").fetchall()[0][0]
+            stadium = make_select_query(cursor, f"select stadium from games where game_id = {i+1}").fetchall()[0][0]
+            print(f"{i+1}. {team1} vs {team2} {game_date} at {time} in {stadium}")
+        print("Choose the option: 1 - to add game event ")
+        print("Choose the option: 2 - to remove game event")
+        print("or any number to exit")
+        choice = input("Choice: ")
+        if choice == '1':
+            team1 = input("Input first team name: ")
+            team2 = input("Second team name: ")
+            game_date = input("Date of the event in format YYYY-MM-DD: ")
+            time = input("Time in format HH:MM: ")
+            stadium = input("Stadium: ")
+            query = f"insert into games values({x+1},'{team1}','{team2}','{game_date}','{time}','{stadium}')"
+            make_insert_query(cursor, query, connection)
+            print("The event was added.")
+        elif choice == '2':
+            game_id_choise = input("Choose the number of the game you want to delete: ")
+            query = f"DELETE FROM games WHERE game_id = {game_id_choise}"
+            make_insert_query(cursor, query, connection)
+            print("The event was deleted")
+    else:
+        print("Access Denied")
+            
+
+
+# global variables to use in different functions
+is_authenticated = False
+current_user = "Guest"
+
+
+# the main algorithm of the program
+def main():
+    connection = db_connect()
+    cursor = connection.cursor()
+    while True:
+        menu_options(is_authenticated, current_user, cursor)
+        choose_option = input("Please choose what to do: ")
+        if not is_authenticated:
+            if choose_option is '1':
+                user_registration(cursor, connection)
+            elif choose_option is '2':
+                login(cursor)
+            elif choose_option is '3':
+                break
+            else:
+                print("Please choose 1 or 2")
+                continue
+        else:
+            if choose_option is '1':
+                see_games(cursor, connection)
+            elif choose_option is '2':
+                make_deposit(cursor, connection)
+            elif choose_option is '3':
+                withdraw(cursor, connection)
+            elif choose_option is '4':
+                admin(cursor, connection)
+            elif choose_option is '5':
+                break
+            else:
+                print("Please choose 1 - 5")
+                continue
+
+# calling the main function
+if name == '__main__':
+    main()
